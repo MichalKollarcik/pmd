@@ -66,16 +66,9 @@ public class ConfigurableFileNameRenderer implements FileNameRenderer {
     private static final Pattern PATH_SEP_PAT = Pattern.compile("[/\\\\]");
 
     // both input paths represent absolute paths
-    private static String relativizePath(Path base, String other) {
+    private static String relativizePath(Path base, String other, String[] otherSegments) {
         assert base.isAbsolute() : "Expected an absolute path: " + base;
 
-        // If the second path starts with C:\, remove the C: part for
-        // consistency.
-        int windowsDriveEndIndex = other.indexOf(':');
-        if (windowsDriveEndIndex != -1 && windowsDriveEndIndex < other.length() - 1) {
-            other = other.substring(windowsDriveEndIndex + 1);
-        }
-        String[] otherSegments = PATH_SEP_PAT.split(other);
         int prefixLength = 0;
         // We remove 1 because since 'other' is absolute it always starts
         // with the empty string.
@@ -112,18 +105,36 @@ public class ConfigurableFileNameRenderer implements FileNameRenderer {
     static String getDisplayName(FileId file, List<Path> relativizeRoots) {
         final String fileAbsPath = file.getAbsolutePath();
         String best = fileAbsPath;
+        String other = fileAbsPath;
+        String[] otherSegments = null;
+        int bestSegmentCount = -1;
         for (Path root : relativizeRoots) {
             if (isFileSystemRoot(root)) {
                 // Absolutize the path. Since the relativize roots are
                 // sorted by ascending length, this should be the first in the list
                 // (so another root can override it).
                 best = fileAbsPath;
+                bestSegmentCount = -1;
                 continue;
             }
 
-            String relative = relativizePath(root.toAbsolutePath(), fileAbsPath);
-            if (countSegments(relative) < countSegments(best)) {
+            if (otherSegments == null) {
+                // The file is the same for every root, so split it only once.
+                int windowsDriveEndIndex = other.indexOf(':');
+                if (windowsDriveEndIndex != -1 && windowsDriveEndIndex < other.length() - 1) {
+                    other = other.substring(windowsDriveEndIndex + 1);
+                }
+                otherSegments = PATH_SEP_PAT.split(other);
+            }
+
+            String relative = relativizePath(root.toAbsolutePath(), other, otherSegments);
+            int relativeSegmentCount = countSegments(relative);
+            if (bestSegmentCount < 0) {
+                bestSegmentCount = countSegments(best);
+            }
+            if (relativeSegmentCount < bestSegmentCount) {
                 best = relative;
+                bestSegmentCount = relativeSegmentCount;
             }
         }
         return best;
